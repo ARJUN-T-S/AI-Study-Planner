@@ -2,7 +2,8 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
-
+const admin=require('./config/firebase')
+const verifyToken=require('./MiddleWare/authMiddleWare');
 dotenv.config();
 const app = express();
 app.use(express.json());
@@ -23,10 +24,29 @@ mongoose.connect(process.env.MONGO_URI, {
 .catch(err => console.error("❌ MongoDB connection error:", err));
 
 // Test route
-app.get('/', (req, res) => {
-    res.send("Server is running & ready to use ✅");
-});
+app.post("/signup", verifyToken, async (req, res) => {
+  try {
+    const { name, email } = req.body;
+    const userId = req.userId; 
 
+    let existingUser = await User.findOne({ userId });
+    if (existingUser) {
+      return res.status(400).json({ error: "User already exists" });
+    }
+
+    const newUser = new User({ userId, name, email });
+    await newUser.save();
+
+    res.status(201).json({
+      message: "New Account Created",
+      user: newUser,
+    });
+  } catch (err) {
+    res
+      .status(500)
+      .json({ message: "Error in creating an account! Please try again later" });
+  }
+});
 // Example route to check users (optional)
 app.get('/users', async (req, res) => {
     try {
