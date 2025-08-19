@@ -11,14 +11,6 @@ const ModelPaperSchema = new mongoose.Schema({
         ref: 'Users',
         required: true
     },
-    paperName: {
-        type: String,
-        required: true
-    },
-    fileUrl: { 
-        type: String,   // Link to file stored in Firebase Storage / S3
-        required: true
-    },
     extractedQuestions: [{
         type: String   // Store extracted questions/topics
     }],
