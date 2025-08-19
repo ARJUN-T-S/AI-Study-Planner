@@ -3,7 +3,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const admin=require('./config/firebase')
-const verifyToken=require('./MiddleWare/authMiddleWare');
+const SubjectRoutes=require('./Routes/subjectRoutes');
 dotenv.config();
 const app = express();
 app.use(express.json());
@@ -21,6 +21,7 @@ mongoose.connect(process.env.MONGO_URI, {
 
 // Test route
 app.use('/users',UserRoutes);
+app.use('/subject',SubjectRoutes);
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
