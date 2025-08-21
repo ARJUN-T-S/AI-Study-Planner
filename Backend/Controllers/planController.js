@@ -1,6 +1,7 @@
 // controllers/azureController.js
 require("dotenv").config();
 const fetch = require("node-fetch");
+const Plan = require("../Models/Plan"); // import your Plan model
 
 exports.postplan = async (req, res) => {
   try {
@@ -22,8 +23,9 @@ create a structured study schedule.
 The schedule should be broken down:
 1. Day by day
 2. Inside each day, provide multiple time slots (like "09:00-10:30", "11:00-12:30", etc.)
-3. Each slot should have one or two topics only.
-
+3. Each slot should have minimum of 2 topics based on the difficulty.
+4. The schedule should be from start date to end date-1.
+5. If there already exist a plan just change the plan according to the parameter which is new for example sessionHrs should be change only with respect to the date they are updating,similarly to leisureHrs etc..
 ⚠️ Return ONLY valid JSON (no markdown, no explanations, no code fences).  
 
 Format:
@@ -53,21 +55,18 @@ The present plan is ${presentPlan}
     const apiKey = process.env.AZURE_OPENAI_API_KEY;
 
     // Call Azure OpenAI
-    const response = await fetch(
-      endpoint,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "api-key": apiKey,
-        },
-        body: JSON.stringify({
-          messages: [{ role: "system", content: prompt }],
-          max_tokens: 1500,
-          temperature: 0.7,
-        }),
-      }
-    );
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "api-key": apiKey,
+      },
+      body: JSON.stringify({
+        messages: [{ role: "system", content: prompt }],
+        max_tokens: 1500,
+        temperature: 0.7,
+      }),
+    });
 
     if (!response.ok) {
       const errText = await response.text();
@@ -101,7 +100,18 @@ The present plan is ${presentPlan}
       });
     });
 
+    // ✅ Save into MongoDB
+    const newPlan = new Plan({
+      userId: req.userId, // assuming userId is added by middleware after auth
+      startDate,
+      endDate,
+      plan: transformedSchedule,
+    });
+
+    await newPlan.save();
+
     res.json({
+      message: "Plan saved successfully",
       plan: transformedSchedule,
     });
   } catch (err) {

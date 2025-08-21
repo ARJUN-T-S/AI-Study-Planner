@@ -1,39 +1,16 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
-const ProgressSchema = new mongoose.Schema({
-    userId: {
-        type: String, // Firebase UID
-        ref: 'Users',
-        required: true
-    },
-    studyPlanId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'StudyPlans',
-        required: true
-    },
-    date: {
-        type: Date,
-        default: Date.now
-    },
-    completedTasks: [
-        {
-            week: { type: Number, required: true },
-            topic: { type: String, required: true },
-            status: {
-                type: String,
-                enum: ['pending', 'in-progress', 'completed'],
-                default: 'pending'
-            }
-        }
-    ],
-    overallProgress: {
-        type: Number, // percentage: e.g., 65 means 65% done
-        default: 0
-    },
-    updatedAt: {
-        type: Date,
-        default: Date.now
-    }
+const progressItemSchema = new mongoose.Schema({
+  topic: { type: String, required: true },
+  date: { type: Date, required: true },
+  time: { type: String, required: true }, // e.g., "09:00-10:30"
+  isCompleted: { type: Boolean, default: false }, // checkbox
+  fromPlan: { type: mongoose.Schema.Types.ObjectId, ref: "Plan" } // reference to the plan it came from
 });
 
-module.exports = mongoose.model('Progress', ProgressSchema);
+const progressSchema = new mongoose.Schema({
+  userId: { type: String, required: true, ref: "User" }, // can be Firebase UID
+  progressItems: [progressItemSchema]
+}, { timestamps: true });
+
+module.exports = mongoose.model("Progress", progressSchema);
