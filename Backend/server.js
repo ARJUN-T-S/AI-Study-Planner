@@ -9,6 +9,8 @@ const planRoutes=require('./Routes/planRoutes');
 dotenv.config();
 const app = express();
 app.use(express.json());
+const cors=require("cors");
+app.use(cors());
 
 // Import models
 const UserRoutes=require('./Routes/UserRoutes');
