@@ -1,7 +1,6 @@
-// controllers/azureController.js
 require("dotenv").config();
 const fetch = require("node-fetch");
-const Plan = require("../Models/Plan"); // import your Plan model
+const Plan = require("../Models/Plan");
 
 exports.postplan = async (req, res) => {
   try {
@@ -24,8 +23,9 @@ The schedule should be broken down:
 1. Day by day
 2. Inside each day, provide multiple time slots (like "09:00-10:30", "11:00-12:30", etc.)
 3. Each slot should have minimum of 2 topics based on the difficulty.
-4. The schedule should be from start date to end date-1.
-5. If there already exist a plan just change the plan according to the parameter which is new for example sessionHrs should be change only with respect to the date they are updating,similarly to leisureHrs etc..
+4. Each slot should include a "mostAskedQuestions" field with at least 5 relevant questions.
+5. The schedule should be from start date to end date-1.
+6. If there already exists a plan, update it according to the new parameters (session hours, leisure hours, etc.).
 ⚠️ Return ONLY valid JSON (no markdown, no explanations, no code fences).  
 
 Format:
@@ -33,19 +33,27 @@ Format:
   {
     "day": "YYYY-MM-DD",
     "slots": [
-      { "time": "09:00-10:30", "topics": ["Topic 1"] },
-      { "time": "11:00-12:30", "topics": ["Topic 2", "Topic 3"] }
+      { 
+        "time": "09:00-10:30", 
+        "topics": ["Topic 1"],
+        "mostAskedQuestions": ["Question 1", "Question 2", "Question 3", "Question 4", "Question 5"]
+      },
+      { 
+        "time": "11:00-12:30", 
+        "topics": ["Topic 2", "Topic 3"],
+        "mostAskedQuestions": ["Question 1", "Question 2", "Question 3", "Question 4", "Question 5"]
+      }
     ]
   }
 ]
 
-The syllabus is ${syllabus}
-The modelQuestion is ${modelq}
+The syllabus is ${JSON.stringify(syllabus)}
+The modelQuestion is ${JSON.stringify(modelq)}
 The startDate is ${startDate}
 The endDate is ${endDate}
 The session time is ${sessionHours}
-The Leisure Hours are ${leisureTimes}
-The present plan is ${presentPlan}
+The Leisure Hours are ${JSON.stringify(leisureTimes || [])}
+The present plan is ${presentPlan ? JSON.stringify(presentPlan) : "none"}
     `;
 
     // Azure endpoint details from .env
@@ -63,7 +71,7 @@ The present plan is ${presentPlan}
       },
       body: JSON.stringify({
         messages: [{ role: "system", content: prompt }],
-        max_tokens: 1500,
+        max_tokens: 2000,
         temperature: 0.7,
       }),
     });
@@ -90,19 +98,45 @@ The present plan is ${presentPlan}
       });
     }
 
-    // Transform into { date: { time: [topics] } }
+    // Transform into the correct format for the schema
     const transformedSchedule = {};
     aiData.forEach((dayObj) => {
-      const { day, slots } = dayObj;
-      transformedSchedule[day] = {};
-      slots.forEach((slot) => {
-        transformedSchedule[day][slot.time] = slot.topics;
-      });
+      const dayPlan = dayObj.slots.map(slot => ({
+        time: slot.time,
+        topics: slot.topics,
+        mostAskedQuestions: slot.mostAskedQuestions || []
+      }));
+      
+      transformedSchedule[dayObj.day] = [{
+        date: dayObj.day,
+        slots: dayPlan
+      }];
     });
 
-    // ✅ Save into MongoDB
+    // Check if we have a presentPlan (update case)
+    if (presentPlan && req.userId) {
+      // Find existing plan
+      const existingPlan = await Plan.findOne({ userId: req.userId });
+      
+      if (existingPlan) {
+        // Update existing plan
+        existingPlan.plan = transformedSchedule;
+        existingPlan.startDate = startDate;
+        existingPlan.endDate = endDate;
+        existingPlan.updatedAt = Date.now();
+        
+        await existingPlan.save();
+        
+        return res.json({
+          message: "Plan updated successfully",
+          plan: transformedSchedule,
+        });
+      }
+    }
+
+    // Create new plan (default behavior)
     const newPlan = new Plan({
-      userId: req.userId, // assuming userId is added by middleware after auth
+      userId: req.userId,
       startDate,
       endDate,
       plan: transformedSchedule,
