@@ -53,22 +53,45 @@ exports.getUser=async(req,res)=>{
 
 
 // POST - Set study time
+// In your backend route file
 exports.setStudyTime = async (req, res) => {
   try {
-    const userId = req.userId;
+    console.log('Received setStudyTime request:', req.body);
+    
+    const userId = req.userId; // Make sure this is being set by your auth middleware
     const { sessionHrs, leisureHrs, otherLeisure } = req.body;
+
+    // Validate required fields
+    if (!sessionHrs || !leisureHrs) {
+      return res.status(400).json({ 
+        message: "Missing required fields: sessionHrs and leisureHrs are required" 
+      });
+    }
+
+    // Validate leisureHrs structure
+    if (!leisureHrs.breakfast || !leisureHrs.lunch || !leisureHrs.dinner) {
+      return res.status(400).json({ 
+        message: "leisureHrs must contain breakfast, lunch, and dinner objects" 
+      });
+    }
 
     const newStudyTime = new StudyTime({
       userId,
       sessionHrs,
       leisureHrs,
-      otherLeisure,
+      otherLeisure: otherLeisure || {},
     });
 
     await newStudyTime.save();
-    res.status(201).json({ message: "StudyTime set successfully" });
+    console.log('StudyTime saved successfully for user:', userId);
+    res.status(201).json({ message: "StudyTime set successfully", data: newStudyTime });
   } catch (err) {
-    res.status(500).json({ message: "Try again later", error: err.message });
+    console.error('Error in setStudyTime:', err);
+    res.status(500).json({ 
+      message: "Try again later", 
+      error: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
   }
 };
 

@@ -69,7 +69,7 @@ const LoginPage = () => {
       // Save in Redux
       dispatch(
         setAuth({
-          idToken,
+          idToken:idToken,
           email: userCredential.user.email,
           name: userCredential.user.displayName || email,
           
@@ -92,7 +92,7 @@ const LoginPage = () => {
       const idToken = await userCredential.user.getIdToken();
       
       // Call backend for Google sign-in
-      const backendEndpoint = `${BACKEND_URL}users/login`;
+      const backendEndpoint = `http://localhost:5000/users/login`;
       
       const backendRes = await fetch(backendEndpoint, {
         method: "POST",
@@ -113,7 +113,7 @@ const LoginPage = () => {
       // Save in Redux
       dispatch(
         setAuth({
-          idToken,
+          idToken:idToken,
           email: userCredential.user.email,
           name: userCredential.user.displayName,
           uid: userCredential.user.uid

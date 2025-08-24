@@ -167,7 +167,7 @@ exports.getProgress = async (req, res) => {
     const userId = req.userId;
 
     const progressDoc = await Progress.findOne({ userId, planId });
-    if (!progressDoc) return res.status(404).json({ error: "Progress not found" });
+    if (!progressDoc) return res.status(200).json({ error: "Progress not found" });
 
     res.json({ progress: progressDoc });
   } catch (err) {

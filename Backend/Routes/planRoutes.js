@@ -7,6 +7,7 @@ const router=express.Router();
 
 router.post('/updateplans',verifyToken,planMiddleWare.getCurrentPlan,planController.postplan);
 router.post('/postPlans',verifyToken,planController.postplan);
+router.get('/getprogress',verifyToken,progressController.getProgress)
 router.post('/progresspost',verifyToken,progressController.progressPost);
 router.put('/putprogress',verifyToken,progressController.updateProgress);
 module.exports=router;
