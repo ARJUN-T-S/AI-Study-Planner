@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Doughnut, Line } from 'react-chartjs-2';
 import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -48,15 +49,23 @@ const Dashboard = () => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [hasExistingStudyTime, setHasExistingStudyTime] = useState(false);
 
   // Get token from Redux store
   const idToken = useSelector(state => state.auth.idToken);
+  const navigate = useNavigate();
 
   // Function to set study time - wrapped in useCallback
   const setStudyTime = useCallback(async (studyTimeData) => {
     try {
-      const response = await fetch('http://localhost:5000/users/setStudyTime', {
-        method: 'POST',
+      const url = hasExistingStudyTime 
+        ? 'http://localhost:5000/users/patchStudyTime' 
+        : 'http://localhost:5000/users/setStudyTime';
+      
+      const method = hasExistingStudyTime ? 'PUT' : 'POST';
+      
+      const response = await fetch(url, {
+        method: method,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${idToken}`
@@ -79,7 +88,7 @@ const Dashboard = () => {
         error: err.message || 'Failed to save study time' 
       };
     }
-  }, [idToken]);
+  }, [idToken, hasExistingStudyTime]);
 
   // Function to get study time - wrapped in useCallback
   const getStudyTime = useCallback(async () => {
@@ -93,6 +102,7 @@ const Dashboard = () => {
       if (!response.ok) {
         // If we get a 404, it means no study time exists for this user
         if (response.status === 404) {
+          setHasExistingStudyTime(false);
           return { success: false, error: "No study time found for user" };
         }
         
@@ -101,8 +111,10 @@ const Dashboard = () => {
       }
       
       const data = await response.json();
+      setHasExistingStudyTime(true);
       return { success: true, data };
     } catch (err) {
+      setHasExistingStudyTime(false);
       return { 
         success: false, 
         error: err.message || 'Failed to fetch study time' 
@@ -216,24 +228,24 @@ const Dashboard = () => {
   }, []);
 
   // Helper function to parse time strings from backend
- const parseTimeString = useCallback((timeString) => {
-  if (!timeString) return { start_time: '', end_time: '' };
-  
-  // Handle the format from backend: "08:15 AM to 08:45 AM"
-  try {
-    const parts = timeString.split(' to ');
-    if (parts.length === 2) {
-      return {
-        start_time: parts[0] || '',
-        end_time: parts[1] || ''
-      };
+  const parseTimeString = useCallback((timeString) => {
+    if (!timeString) return { start_time: '', end_time: '' };
+    
+    // Handle the format from backend: "08:15 AM to 08:45 AM"
+    try {
+      const parts = timeString.split(' to ');
+      if (parts.length === 2) {
+        return {
+          start_time: parts[0] || '',
+          end_time: parts[1] || ''
+        };
+      }
+      return { start_time: '', end_time: '' };
+    } catch (err) {
+      console.error('Error parsing time string:', err);
+      return { start_time: '', end_time: '' };
     }
-    return { start_time: '', end_time: '' };
-  } catch (err) {
-    console.error('Error parsing time string:', err);
-    return { start_time: '', end_time: '' };
-  }
-}, []);
+  }, []);
 
   // Fetch study time data on component mount or when idToken changes
   useEffect(() => {
@@ -325,72 +337,72 @@ const Dashboard = () => {
     }
   }, [idToken, showBlockingTimeModal, getProgressData, calculateMetrics]);
 
-  
- const handleBlockingTimeSubmit = async (e) => {
-  e.preventDefault();
-  try {
-    if (!idToken) {
-      setError('No authentication token found');
-      return;
-    }
+  const handleBlockingTimeSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      if (!idToken) {
+        setError('No authentication token found');
+        return;
+      }
 
-    // Format the data for backend (nested object format)
-    const studyTimeData = {
-      sessionHrs: parseInt(blockingTimes.sessionHrs) || 3,
-      leisureHrs: {
-        breakfast: {
-          start_time: blockingTimes.leisureHrs.breakfast.start_time,
-          end_time: blockingTimes.leisureHrs.breakfast.end_time
-        },
-        lunch: {
-          start_time: blockingTimes.leisureHrs.lunch.start_time,
-          end_time: blockingTimes.leisureHrs.lunch.end_time
-        },
-        dinner: {
-          start_time: blockingTimes.leisureHrs.dinner.start_time,
-          end_time: blockingTimes.leisureHrs.dinner.end_time
+      // Format the data for backend (nested object format)
+      const studyTimeData = {
+        sessionHrs: parseInt(blockingTimes.sessionHrs) || 3,
+        leisureHrs: {
+          breakfast: {
+            start_time: blockingTimes.leisureHrs.breakfast.start_time,
+            end_time: blockingTimes.leisureHrs.breakfast.end_time
+          },
+          lunch: {
+            start_time: blockingTimes.leisureHrs.lunch.start_time,
+            end_time: blockingTimes.leisureHrs.lunch.end_time
+          },
+          dinner: {
+            start_time: blockingTimes.leisureHrs.dinner.start_time,
+            end_time: blockingTimes.leisureHrs.dinner.end_time
+          }
+        }
+      };
+
+      // Only include otherLeisure if values are provided
+      if (blockingTimes.otherLeisure.start_time && blockingTimes.otherLeisure.end_time) {
+        studyTimeData.otherLeisure = {
+          start_time: blockingTimes.otherLeisure.start_time,
+          end_time: blockingTimes.otherLeisure.end_time
+        };
+      }
+
+      console.log('Sending study time data to backend:', studyTimeData);
+
+      const result = await setStudyTime(studyTimeData);
+      
+      if (!result.success) {
+        setError(result.error);
+      } else {
+        setShowBlockingTimeModal(false);
+        setHasExistingStudyTime(true);
+        // Refresh the study time data
+        const studyTimeResult = await getStudyTime();
+        if (studyTimeResult.success) {
+          const data = studyTimeResult.data;
+          // Parse the response data back to frontend format
+          const updatedBlockingTimes = {
+            sessionHrs: data.sessionHrs || 3,
+            leisureHrs: {
+              breakfast: parseTimeString(data.breakfast),
+              lunch: parseTimeString(data.lunch),
+              dinner: parseTimeString(data.dinner)
+            },
+            otherLeisure: parseTimeString(data.otherLeisure)
+          };
+          setBlockingTimes(updatedBlockingTimes);
         }
       }
-    };
-
-    // Only include otherLeisure if values are provided
-    if (blockingTimes.otherLeisure.start_time && blockingTimes.otherLeisure.end_time) {
-      studyTimeData.otherLeisure = {
-        start_time: blockingTimes.otherLeisure.start_time,
-        end_time: blockingTimes.otherLeisure.end_time
-      };
+    } catch (err) {
+      console.error('Error in handleBlockingTimeSubmit:', err);
+      setError(err.message);
     }
-
-    console.log('Sending study time data to backend:', studyTimeData);
-
-    const result = await setStudyTime(studyTimeData);
-    
-    if (!result.success) {
-      setError(result.error);
-    } else {
-      setShowBlockingTimeModal(false);
-      // Refresh the study time data
-      const studyTimeResult = await getStudyTime();
-      if (studyTimeResult.success) {
-        const data = studyTimeResult.data;
-        // Parse the response data back to frontend format
-        const updatedBlockingTimes = {
-          sessionHrs: data.sessionHrs || 3,
-          leisureHrs: {
-            breakfast: parseTimeString(data.breakfast),
-            lunch: parseTimeString(data.lunch),
-            dinner: parseTimeString(data.dinner)
-          },
-          otherLeisure: parseTimeString(data.otherLeisure)
-        };
-        setBlockingTimes(updatedBlockingTimes);
-      }
-    }
-  } catch (err) {
-    console.error('Error in handleBlockingTimeSubmit:', err);
-    setError(err.message);
-  }
-};
+  };
 
   const handleInputChange = (category, field, value) => {
     if (category === 'sessionHrs') {
@@ -420,6 +432,11 @@ const Dashboard = () => {
         }
       }));
     }
+  };
+
+  // Function to navigate to study schedule page
+  const handleViewStudySchedule = () => {
+    navigate('/study-schedule');
   };
 
   // Data for the doughnut chart (slot utilization)
@@ -575,12 +592,12 @@ const Dashboard = () => {
                   <label className="block text-gray-300 mb-2">Lunch Time</label>
                   <div className="flex space-x-2">
                     <input
-  type="time"
-  value={blockingTimes.leisureHrs.lunch.start_time}
-  onChange={(e) => handleInputChange('leisureHrs.lunch.start_time', null, e.target.value)}
-  className="bg-gray-700 text-white p-2 rounded w-full"
-  required
-/>
+                      type="time"
+                      value={blockingTimes.leisureHrs.lunch.start_time}
+                      onChange={(e) => handleInputChange('leisureHrs.lunch.start_time', null, e.target.value)}
+                      className="bg-gray-700 text-white p-2 rounded w-full"
+                      required
+                    />
                     <span className="self-center">to</span>
                     <input
                       type="time"
@@ -593,34 +610,35 @@ const Dashboard = () => {
                 </div>
                 
                 <div>
-  <label className="block text-gray-300 mb-2">Dinner Time</label>
-  <div className="flex space-x-2">
-    <input
-      type="time"
-      value={blockingTimes.leisureHrs.dinner.start_time}
-      onChange={(e) => handleInputChange('leisureHrs.dinner.start_time', null, e.target.value)}
-      className="bg-gray-700 text-white p-2 rounded w-full"
-      required
-    />
-    <span className="self-center">to</span>
-    <input
-      type="time"
-      value={blockingTimes.leisureHrs.dinner.end_time}
-      onChange={(e) => handleInputChange('leisureHrs.dinner.end_time', null, e.target.value)}
-      className="bg-gray-700 text-white p-2 rounded w-full"
-      required
-    />
-  </div>
-</div>
+                  <label className="block text-gray-300 mb-2">Dinner Time</label>
+                  <div className="flex space-x-2">
+                    <input
+                      type="time"
+                      value={blockingTimes.leisureHrs.dinner.start_time}
+                      onChange={(e) => handleInputChange('leisureHrs.dinner.start_time', null, e.target.value)}
+                      className="bg-gray-700 text-white p-2 rounded w-full"
+                      required
+                    />
+                    <span className="self-center">to</span>
+                    <input
+                      type="time"
+                      value={blockingTimes.leisureHrs.dinner.end_time}
+                      onChange={(e) => handleInputChange('leisureHrs.dinner.end_time', null, e.target.value)}
+                      className="bg-gray-700 text-white p-2 rounded w-full"
+                      required
+                    />
+                  </div>
+                </div>
+                
                 <div>
                   <label className="block text-gray-300 mb-2">Other Leisure Time (Optional)</label>
                   <div className="flex space-x-2">
                     <input
-  type="time"
-  value={blockingTimes.otherLeisure.start_time}
-  onChange={(e) => handleInputChange('otherLeisure', 'start_time', e.target.value)}
-  className="bg-gray-700 text-white p-2 rounded w-full"
-/>
+                      type="time"
+                      value={blockingTimes.otherLeisure.start_time}
+                      onChange={(e) => handleInputChange('otherLeisure', 'start_time', e.target.value)}
+                      className="bg-gray-700 text-white p-2 rounded w-full"
+                    />
                     <span className="self-center">to</span>
                     <input
                       type="time"
@@ -637,7 +655,7 @@ const Dashboard = () => {
                   type="submit"
                   className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
                 >
-                  Save & Continue
+                  {hasExistingStudyTime ? 'Update Schedule' : 'Save & Continue'}
                 </button>
               </div>
             </form>
@@ -650,12 +668,20 @@ const Dashboard = () => {
         {/* Header */}
         <header className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">LearnPath Dashboard</h1>
-          <button 
-            onClick={() => setShowBlockingTimeModal(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
-          >
-            Edit Schedule
-          </button>
+          <div className="flex space-x-3">
+            <button 
+              onClick={handleViewStudySchedule}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
+            >
+              View Study Schedule
+            </button>
+            <button 
+              onClick={() => setShowBlockingTimeModal(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+            >
+              Edit Schedule
+            </button>
+          </div>
         </header>
         
         {/* Current Schedule Display */}
@@ -705,13 +731,13 @@ const Dashboard = () => {
 
           {/* Utilization Rate Card */}
           <div className="bg-gray-800 rounded-xl shadow-md p-6 flex flex-col items-center">
-  <div className="w-16 h-16 rounded-full bg-green-900 flex items-center justify-center mb-4">
-    <i className="fas fa-clock text-green-400 text-xl"></i>
-  </div>
-  <h2 className="text-2xl font-bold text-white">{metrics.utilizationRate}%</h2>
-  <p className="text-gray-400">Time Utilization</p>
-  <p className="text-sm text-gray-500 mt-2">Study slots used effectively</p>
-</div>
+            <div className="w-16 h-16 rounded-full bg-green-900 flex items-center justify-center mb-4">
+              <i className="fas fa-clock text-green-400 text-xl"></i>
+            </div>
+            <h2 className="text-2xl font-bold text-white">{metrics.utilizationRate}%</h2>
+            <p className="text-gray-400">Time Utilization</p>
+            <p className="text-sm text-gray-500 mt-2">Study slots used effectively</p>
+          </div>
 
           {/* Next Session Card */}
           <div className="bg-gray-800 rounded-xl shadow-md p-6 flex flex-col items-center">
@@ -741,16 +767,16 @@ const Dashboard = () => {
           </div>
 
           {/* Slot Utilization Doughnut Chart */}
-        <div className="bg-gray-800 rounded-xl shadow-md p-6">
-  <h2 className="text-xl font-bold text-white mb-4">Slot Utilization</h2>
-  <div className="h-80 flex items-center justify-center">
-    {metrics.utilizationRate > 0 ? (
-      <Doughnut data={utilizationData} options={doughnutOptions} />
-    ) : (
-      <div className="text-gray-400">No utilization data available</div>
-    )}
-  </div>
-</div>
+          <div className="bg-gray-800 rounded-xl shadow-md p-6">
+            <h2 className="text-xl font-bold text-white mb-4">Slot Utilization</h2>
+            <div className="h-80 flex items-center justify-center">
+              {metrics.utilizationRate > 0 ? (
+                <Doughnut data={utilizationData} options={doughnutOptions} />
+              ) : (
+                <div className="text-gray-400">No utilization data available</div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Recent Activity */}

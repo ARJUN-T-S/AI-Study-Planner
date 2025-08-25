@@ -1,18 +1,46 @@
-const Subject=require('../Models/Subject');
+const Subject = require('../Models/Subject');
 const fetch = require('node-fetch');
-exports.addSubjectWithoutImage=async(req,res)=>{
-    try{
-    const userId=req.userId;
-    const {subjectName,syllabusText}=req.body;
-    const extractedTopics=syllabusText.split(",");
-    const newSubject=new Subject({userId,subjectName,syllabusText,extractedTopics});
+
+// Get all subjects for a user
+exports.getSubjects = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const subjects = await Subject.find({ userId });
+    return res.status(200).json(subjects);
+  } catch (err) {
+    return res.status(500).json({ message: "Failed to fetch subjects" });
+  }
+};
+
+// Add subject without image
+exports.addSubjectWithoutImage = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { subjectName, syllabusText, startDate, endDate } = req.body;
+    
+    // Validate required fields
+    if (!subjectName || !startDate || !endDate) {
+      return res.status(400).json({ message: "Subject name, start date, and end date are required" });
+    }
+    
+    const extractedTopics = syllabusText ? syllabusText.split(",") : [];
+    const newSubject = new Subject({ 
+      userId, 
+      subjectName, 
+      syllabusText, 
+      extractedTopics, 
+      startDate, 
+      endDate 
+    });
+    
     await newSubject.save();
-    return res.status(201).json({message:"Sucessfully created"});
-    }
-    catch(err){
-        return res.status(500).json({message:"Failed to add!Please try again later"});
-    }
-}
+    return res.status(201).json({ message: "Successfully created", subject: newSubject });
+  } catch (err) {
+    return res.status(500).json({ message: "Failed to add subject! Please try again later" });
+  }
+};
+
+// Helper function to group topics from OCR text
 function groupTopics(lines) {
   const topics = [];
   let currentTopic = "";
@@ -89,11 +117,17 @@ function groupTopics(lines) {
   return finalTopics;
 }
 
+// Add subject with image (OCR processing)
 exports.addSubjectWithImage = async (req, res) => {
   try {
     const userId = req.userId;
-    const { subjectName } = req.body;
+    const { subjectName, startDate, endDate } = req.body;
     const imageURL = req.imageURL;
+
+    // Validate required fields
+    if (!subjectName || !startDate || !endDate) {
+      return res.status(400).json({ message: "Subject name, start date, and end date are required" });
+    }
 
     if (!imageURL) {
       return res.status(400).json({ message: "No image URL found" });
@@ -159,9 +193,11 @@ exports.addSubjectWithImage = async (req, res) => {
     const newSubject = new Subject({
       userId,
       subjectName,
-      image:imageURL,
+      image: imageURL,
       syllabusText: extractedText,
       extractedTopics,
+      startDate,
+      endDate
     });
 
     await newSubject.save();
@@ -170,7 +206,7 @@ exports.addSubjectWithImage = async (req, res) => {
       message: "OCR successful",
       extractedText,
       extractedTopics,
-      newSubjectId: newSubject._id,
+      subject: newSubject,
     });
 
   } catch (err) {
@@ -179,5 +215,23 @@ exports.addSubjectWithImage = async (req, res) => {
       message: "OCR failed. Please check the image URL and try again.",
       error: err.message,
     });
+  }
+};
+
+// Delete a subject
+exports.deleteSubject = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { subjectId } = req.params;
+    
+    const subject = await Subject.findOne({ _id: subjectId, userId });
+    if (!subject) {
+      return res.status(404).json({ message: "Subject not found" });
+    }
+    
+    await Subject.findByIdAndDelete(subjectId);
+    return res.status(200).json({ message: "Subject deleted successfully" });
+  } catch (err) {
+    return res.status(500).json({ message: "Failed to delete subject" });
   }
 };

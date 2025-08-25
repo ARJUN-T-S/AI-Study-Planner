@@ -7,6 +7,6 @@ router.post('/signup',verifyToken,UserController.createUser);
 router.post('/login',verifyToken,UserController.loginUser);
 router.get('/getStudyTime',verifyToken,UserController.getStudyTime);
 router.post('/setStudyTime',verifyToken,UserController.setStudyTime);
-router.patch('/patchStudyTime',verifyToken,UserController.patchStudyTime);
+router.put('/patchStudyTime',verifyToken,UserController.patchStudyTime);
 
 module.exports=router;

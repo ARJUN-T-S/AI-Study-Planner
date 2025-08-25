@@ -143,7 +143,38 @@ exports.patchStudyTime = async (req, res) => {
     if (!updateStudyTime) {
       return res.status(404).json({ message: "Record Not found" });
     }
-
+    
+    // Call the updateplans endpoint after successfully updating study time
+    try {
+      const internalRequest = {
+        method: 'POST',
+        url: 'http://localhost:5000/plans/updateplans',
+        headers: {
+          'Authorization': req.headers['authorization'],
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})
+      };
+      
+      // Make internal HTTP request to update plans
+      const response = await fetch(internalRequest.url, {
+        method: internalRequest.method,
+        headers: internalRequest.headers,
+        body: internalRequest.body
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to update plans:', response.statusText);
+        // We don't want to fail the main request if plan update fails
+        console.log('Study time updated but plan update failed');
+      } else {
+        console.log('Plans updated successfully after study time change');
+      }
+    } catch (planError) {
+      console.error('Error calling updateplans:', planError.message);
+      // Continue with the response even if plan update fails
+    }
+    
     res.status(200).json({
       message: "Study Time updated successfully",
       studyTime: updateStudyTime,
