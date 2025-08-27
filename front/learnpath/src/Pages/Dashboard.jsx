@@ -50,10 +50,86 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [hasExistingStudyTime, setHasExistingStudyTime] = useState(false);
+  const [syncingProgress, setSyncingProgress] = useState(false);
 
   // Get token from Redux store
   const idToken = useSelector(state => state.auth.idToken);
   const navigate = useNavigate();
+
+  // Function to update plan and sync progress
+  // Function to update plan and sync progress
+const updatePlanAndSyncProgress = useCallback(async (startDate, endDate) => {
+  try {
+    setSyncingProgress(true);
+    
+    // First, update the plan with the required date fields and proper parameter names
+    const updatePlanResponse = await fetch('http://localhost:5000/plans/updateplans', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
+      body: JSON.stringify({
+        startDate,
+        endDate,
+        sessionHours: blockingTimes.sessionHrs, // Changed from sessionHrs to sessionHours
+        leisureTimes: { // Changed from leisureHrs to leisureTimes
+          breakfast: blockingTimes.leisureHrs.breakfast,
+          lunch: blockingTimes.leisureHrs.lunch,
+          dinner: blockingTimes.leisureHrs.dinner,
+          other: blockingTimes.otherLeisure // Added other leisure time
+        },
+        presentPlan: progressData?.progress?.plan // Include current plan for reference
+      })
+    });
+    
+    if (!updatePlanResponse.ok) {
+      const errorData = await updatePlanResponse.json();
+      throw new Error(errorData.message || 'Failed to update plan');
+    }
+    
+    const updatePlanData = await updatePlanResponse.json();
+    
+    // Then, sync progress with the updated plan
+    const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    const currentTime = new Date().toTimeString().slice(0, 5); // HH:MM format
+    
+    const syncProgressResponse = await fetch('http://localhost:5000/plans/updateprogress', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`
+      },
+      body: JSON.stringify({
+        date: currentDate,
+        time: currentTime
+      })
+    });
+    
+    if (!syncProgressResponse.ok) {
+      const errorData = await syncProgressResponse.json();
+      throw new Error(errorData.message || 'Failed to sync progress');
+    }
+    
+    const syncProgressData = await syncProgressResponse.json();
+    
+    // Refresh the progress data
+    const result = await getProgressData();
+    if (result.success) {
+      setProgressData(result.data);
+      calculateMetrics(result.data);
+    }
+    
+    setSyncingProgress(false);
+    return { success: true, data: syncProgressData };
+  } catch (err) {
+    setSyncingProgress(false);
+    return { 
+      success: false, 
+      error: err.message || 'Failed to update plan and sync progress' 
+    };
+  }
+}, [idToken, blockingTimes, progressData]);
 
   // Function to set study time - wrapped in useCallback
   const setStudyTime = useCallback(async (studyTimeData) => {
@@ -133,6 +209,15 @@ const Dashboard = () => {
       
       if (!response.ok) {
         const errorData = await response.json();
+        
+        // Handle case where no progress is found
+        if (response.status === 404 || errorData.error === "Progress not found") {
+          return { 
+            success: false, 
+            error: "No study progress found. Let's create your first study plan!" 
+          };
+        }
+        
         throw new Error(errorData.message || 'Failed to fetch progress data');
       }
       
@@ -148,13 +233,15 @@ const Dashboard = () => {
 
   // Calculate metrics function
   const calculateMetrics = useCallback((data) => {
-    if (!data || !data.progress) return;
+    if (!data || !data.progress || !data.progress.progress) return;
+
+    const progressArray = data.progress.progress;
 
     // Calculate completion rate
     let totalTopics = 0;
     let completedTopics = 0;
     
-    data.progress.forEach(day => {
+    progressArray.forEach(day => {
       day.slots.forEach(slot => {
         totalTopics += slot.completedTopics.length + slot.pendingTopics.length;
         completedTopics += slot.completedTopics.length;
@@ -166,7 +253,7 @@ const Dashboard = () => {
     // Calculate daily streak
     let streak = 0;
     const today = new Date();
-    const sortedDates = [...data.progress]
+    const sortedDates = [...progressArray]
       .map(day => new Date(day.date))
       .sort((a, b) => b - a);
     
@@ -185,10 +272,10 @@ const Dashboard = () => {
     let totalSlots = 0;
     let utilizedSlots = 0;
     
-    data.progress.forEach(day => {
+    progressArray.forEach(day => {
       day.slots.forEach(slot => {
         totalSlots++;
-        if (slot.status === 'completed' || slot.status === 'in-progress') {
+        if (slot.status === 'completed' || slot.completedTopics.length > 0) {
           utilizedSlots++;
         }
       });
@@ -201,7 +288,7 @@ const Dashboard = () => {
     const completed = [];
     const pending = [];
     
-    data.progress.forEach(day => {
+    progressArray.forEach(day => {
       let dayCompleted = 0;
       let dayPending = 0;
       
@@ -268,10 +355,8 @@ const Dashboard = () => {
           } else {
             setError(result.error);
           }
-          setLoading(false);
         } else {
           const data = result.data;
-          console.log('Backend response data:', data);
           
           // Parse the time strings from backend into the expected object format
           const updatedBlockingTimes = {
@@ -284,13 +369,10 @@ const Dashboard = () => {
             otherLeisure: parseTimeString(data.otherLeisure)
           };
           
-          console.log('Parsed blocking times:', updatedBlockingTimes);
           setBlockingTimes(updatedBlockingTimes);
-          setLoading(false);
         }
       } catch (err) {
         setError(err.message);
-        setLoading(false);
         setShowBlockingTimeModal(true);
       }
     };
@@ -372,15 +454,22 @@ const Dashboard = () => {
         };
       }
 
-      console.log('Sending study time data to backend:', studyTimeData);
-
       const result = await setStudyTime(studyTimeData);
       
       if (!result.success) {
         setError(result.error);
       } else {
+        // After successfully setting study time, update the plan and sync progress
+        const updateResult = await updatePlanAndSyncProgress();
+        
+        if (!updateResult.success) {
+          setError(updateResult.error);
+          return;
+        }
+        
         setShowBlockingTimeModal(false);
         setHasExistingStudyTime(true);
+        
         // Refresh the study time data
         const studyTimeResult = await getStudyTime();
         if (studyTimeResult.success) {
@@ -439,20 +528,23 @@ const Dashboard = () => {
     navigate('/study-schedule');
   };
 
+  // Function to navigate to study plan creation
+  const handleCreatePlan = () => {
+    navigate('/create-plan');
+  };
+
   // Data for the doughnut chart (slot utilization)
   const utilizationData = {
-    labels: ['Completed', 'In Progress', 'Pending'],
+    labels: ['Completed', 'Pending'],
     datasets: [
       {
-        data: [metrics.utilizationRate, 0, 100 - metrics.utilizationRate],
+        data: [metrics.utilizationRate, 100 - metrics.utilizationRate],
         backgroundColor: [
           'rgba(75, 192, 192, 0.6)',
-          'rgba(255, 206, 86, 0.6)',
           'rgba(255, 99, 132, 0.6)',
         ],
         borderColor: [
           'rgba(75, 192, 192, 1)',
-          'rgba(255, 206, 86, 1)',
           'rgba(255, 99, 132, 1)',
         ],
         borderWidth: 1,
@@ -531,14 +623,6 @@ const Dashboard = () => {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-white text-xl">Loading...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-red-500 text-xl">Error: {error}</div>
       </div>
     );
   }
@@ -654,8 +738,9 @@ const Dashboard = () => {
                 <button
                   type="submit"
                   className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+                  disabled={syncingProgress}
                 >
-                  {hasExistingStudyTime ? 'Update Schedule' : 'Save & Continue'}
+                  {syncingProgress ? 'Syncing...' : hasExistingStudyTime ? 'Update Schedule' : 'Save & Continue'}
                 </button>
               </div>
             </form>
@@ -684,6 +769,25 @@ const Dashboard = () => {
           </div>
         </header>
         
+        {/* Error/No Progress Message */}
+        {error && (
+          <div className="bg-yellow-900 border border-yellow-700 text-yellow-200 px-6 py-4 rounded-lg mb-8">
+            <div className="flex items-center">
+              <i className="fas fa-exclamation-triangle text-xl mr-3"></i>
+              <div>
+                <h3 className="font-bold">No Study Progress Found</h3>
+                <p>{error}</p>
+              </div>
+            </div>
+            <button 
+              onClick={handleCreatePlan}
+              className="mt-4 bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded"
+            >
+              Create Your First Study Plan
+            </button>
+          </div>
+        )}
+        
         {/* Current Schedule Display */}
         {blockingTimes && (
           <div className="bg-gray-800 rounded-xl shadow-md p-6 mb-8">
@@ -702,108 +806,151 @@ const Dashboard = () => {
           </div>
         )}
         
-        {/* Metrics Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {/* Completion Rate Card */}
-          <div className="bg-gray-800 rounded-xl shadow-md p-6 flex flex-col items-center">
-            <div className="w-16 h-16 rounded-full bg-blue-900 flex items-center justify-center mb-4">
-              <i className="fas fa-tasks text-blue-400 text-xl"></i>
-            </div>
-            <h2 className="text-2xl font-bold text-white">{metrics.completionRate}%</h2>
-            <p className="text-gray-400">Completion Rate</p>
-            <div className="w-full bg-gray-700 rounded-full h-2.5 mt-4">
-              <div 
-                className="bg-blue-500 h-2.5 rounded-full" 
-                style={{ width: `${metrics.completionRate}%` }}
-              ></div>
-            </div>
-          </div>
-
-          {/* Daily Streak Card */}
-          <div className="bg-gray-800 rounded-xl shadow-md p-6 flex flex-col items-center">
-            <div className="w-16 h-16 rounded-full bg-orange-900 flex items-center justify-center mb-4">
-              <i className="fas fa-fire text-orange-400 text-xl"></i>
-            </div>
-            <h2 className="text-2xl font-bold text-white">{metrics.dailyStreak}</h2>
-            <p className="text-gray-400">Day Streak</p>
-            <p className="text-sm text-gray-500 mt-2">Keep going!</p>
-          </div>
-
-          {/* Utilization Rate Card */}
-          <div className="bg-gray-800 rounded-xl shadow-md p-6 flex flex-col items-center">
-            <div className="w-16 h-16 rounded-full bg-green-900 flex items-center justify-center mb-4">
-              <i className="fas fa-clock text-green-400 text-xl"></i>
-            </div>
-            <h2 className="text-2xl font-bold text-white">{metrics.utilizationRate}%</h2>
-            <p className="text-gray-400">Time Utilization</p>
-            <p className="text-sm text-gray-500 mt-2">Study slots used effectively</p>
-          </div>
-
-          {/* Next Session Card */}
-          <div className="bg-gray-800 rounded-xl shadow-md p-6 flex flex-col items-center">
-            <div className="w-16 h-16 rounded-full bg-purple-900 flex items-center justify-center mb-4">
-              <i className="fas fa-calendar-alt text-purple-400 text-xl"></i>
-            </div>
-            <h2 className="text-2xl font-bold text-white">Tomorrow</h2>
-            <p className="text-gray-400">Next Study Session</p>
-            <p className="text-sm text-gray-500 mt-2">9:00 - 10:30 AM</p>
-          </div>
-        </div>
-
-        {/* Charts Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          {/* Topic Trends Line Chart */}
-          <div className="bg-gray-800 rounded-xl shadow-md p-6">
-            <h2 className="text-xl font-bold text-white mb-4">Topic Progress Trend</h2>
-            <div className="h-80">
-              {metrics.topicTrends.dates.length > 0 ? (
-                <Line data={topicTrendsData} options={chartOptions} />
-              ) : (
-                <div className="flex items-center justify-center h-full text-gray-400">
-                  No data available yet
+        {/* Only show metrics and charts if we have progress data */}
+        {progressData && progressData.progress && (
+          <>
+            {/* Metrics Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              {/* Completion Rate Card */}
+              <div className="bg-gray-800 rounded-xl shadow-md p-6 flex flex-col items-center">
+                <div className="w-16 h-16 rounded-full bg-blue-900 flex items-center justify-center mb-4">
+                  <i className="fas fa-tasks text-blue-400 text-xl"></i>
                 </div>
+                <h2 className="text-2xl font-bold text-white">{metrics.completionRate}%</h2>
+                <p className="text-gray-400">Completion Rate</p>
+                <div className="w-full bg-gray-700 rounded-full h-2.5 mt-4">
+                  <div 
+                    className="bg-blue-500 h-2.5 rounded-full" 
+                    style={{ width: `${metrics.completionRate}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              {/* Daily Streak Card */}
+              <div className="bg-gray-800 rounded-xl shadow-md p-6 flex flex-col items-center">
+                <div className="w-16 h-16 rounded-full bg-orange-900 flex items-center justify-center mb-4">
+                  <i className="fas fa-fire text-orange-400 text-xl"></i>
+                </div>
+                <h2 className="text-2xl font-bold text-white">{metrics.dailyStreak}</h2>
+                <p className="text-gray-400">Day Streak</p>
+                <p className="text-sm text-gray-500 mt-2">Keep going!</p>
+              </div>
+
+              {/* Utilization Rate Card */}
+              <div className="bg-gray-800 rounded-xl shadow-md p-6 flex flex-col items-center">
+                <div className="w-16 h-16 rounded-full bg-green-900 flex items-center justify-center mb-4">
+                  <i className="fas fa-clock text-green-400 text-xl"></i>
+                </div>
+                <h2 className="text-2xl font-bold text-white">{metrics.utilizationRate}%</h2>
+                <p className="text-gray-400">Time Utilization</p>
+                <p className="text-sm text-gray-500 mt-2">Study slots used effectively</p>
+              </div>
+
+              {/* Next Session Card */}
+              <div className="bg-gray-800 rounded-xl shadow-md p-6 flex flex-col items-center">
+                <div className="w-16 h-16 rounded-full bg-purple-900 flex items-center justify-center mb-4">
+                  <i className="fas fa-calendar-alt text-purple-400 text-xl"></i>
+                </div>
+                <h2 className="text-2xl font-bold text-white">Tomorrow</h2>
+                <p className="text-gray-400">Next Study Session</p>
+                <p className="text-sm text-gray-500 mt-2">9:00 - 10:30 AM</p>
+              </div>
+            </div>
+
+            {/* Charts Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+              {/* Topic Trends Line Chart */}
+              <div className="bg-gray-800 rounded-xl shadow-md p-6">
+                <h2 className="text-xl font-bold text-white mb-4">Topic Progress Trend</h2>
+                <div className="h-80">
+                  {metrics.topicTrends.dates.length > 0 ? (
+                    <Line data={topicTrendsData} options={chartOptions} />
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-gray-400">
+                      No data available yet
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Slot Utilization Doughnut Chart */}
+              <div className="bg-gray-800 rounded-xl shadow-md p-6">
+                <h2 className="text-xl font-bold text-white mb-4">Slot Utilization</h2>
+                <div className="h-80 flex items-center justify-center">
+                  {metrics.utilizationRate > 0 ? (
+                    <Doughnut data={utilizationData} options={doughnutOptions} />
+                  ) : (
+                    <div className="text-gray-400">No utilization data available</div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Recent Activity */}
+            <div className="bg-gray-800 rounded-xl shadow-md p-6">
+              <h2 className="text-xl font-bold text-white mb-4">Recent Activity</h2>
+              {progressData.progress.progress && progressData.progress.progress.length > 0 ? (
+                <div className="space-y-4">
+                  {progressData.progress.progress.slice(0, 3).map((day, index) => (
+                    <div key={index} className="flex items-center p-4 border border-gray-700 rounded-lg">
+                      <div className="bg-blue-900 p-3 rounded-full mr-4">
+                        <i className="fas fa-book-open text-blue-400"></i>
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-white">
+                          Study plan for {new Date(day.date).toLocaleDateString()}
+                        </h3>
+                        <p className="text-gray-400 text-sm">
+                          {day.slots.length} study sessions scheduled
+                        </p>
+                        <p className="text-gray-400 text-sm">
+                          {day.slots.reduce((acc, slot) => acc + slot.completedTopics.length, 0)} topics completed
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-400">No recent activity found. Start studying to see your progress!</p>
               )}
             </div>
-          </div>
 
-          {/* Slot Utilization Doughnut Chart */}
-          <div className="bg-gray-800 rounded-xl shadow-md p-6">
-            <h2 className="text-xl font-bold text-white mb-4">Slot Utilization</h2>
-            <div className="h-80 flex items-center justify-center">
-              {metrics.utilizationRate > 0 ? (
-                <Doughnut data={utilizationData} options={doughnutOptions} />
+            {/* Upcoming Study Sessions */}
+            <div className="bg-gray-800 rounded-xl shadow-md p-6 mt-8">
+              <h2 className="text-xl font-bold text-white mb-4">Upcoming Study Sessions</h2>
+              {progressData.progress.progress && progressData.progress.progress.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {progressData.progress.progress.slice(0, 2).map((day, index) => (
+                    <div key={index} className="border border-gray-700 rounded-lg p-4">
+                      <h3 className="font-semibold text-white mb-2">
+                        {new Date(day.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                      </h3>
+                      <div className="space-y-2">
+                        {day.slots.slice(0, 3).map((slot, slotIndex) => (
+                          <div key={slotIndex} className="flex justify-between items-center bg-gray-700 p-2 rounded">
+                            <span className="text-white">{slot.time}</span>
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              slot.status === 'completed' ? 'bg-green-500' : 'bg-yellow-500'
+                            }`}>
+                              {slot.status === 'completed' ? 'Completed' : 'Pending'}
+                            </span>
+                          </div>
+                        ))}
+                        {day.slots.length > 3 && (
+                          <p className="text-gray-400 text-sm mt-2">
+                            +{day.slots.length - 3} more sessions
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               ) : (
-                <div className="text-gray-400">No utilization data available</div>
+                <p className="text-gray-400">No upcoming study sessions. Create a study plan to get started!</p>
               )}
             </div>
-          </div>
-        </div>
-
-        {/* Recent Activity */}
-        <div className="bg-gray-800 rounded-xl shadow-md p-6">
-          <h2 className="text-xl font-bold text-white mb-4">Recent Activity</h2>
-          {progressData && progressData.progress && progressData.progress.length > 0 ? (
-            <div className="space-y-4">
-              {progressData.progress.slice(0, 3).map((day, index) => (
-                <div key={index} className="flex items-center p-4 border border-gray-700 rounded-lg">
-                  <div className="bg-blue-900 p-3 rounded-full mr-4">
-                    <i className="fas fa-book-open text-blue-400"></i>
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-white">
-                      Completed {day.slots.reduce((acc, slot) => acc + slot.completedTopics.length, 0)} topics on {new Date(day.date).toLocaleDateString()}
-                    </h3>
-                    <p className="text-gray-400 text-sm">
-                      {day.slots.length} study sessions
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-gray-400">No recent activity found. Start studying to see your progress!</p>
-          )}
-        </div>
+          </>
+        )}
       </div>
     </div>
   );

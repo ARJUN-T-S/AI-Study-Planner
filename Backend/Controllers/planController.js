@@ -14,6 +14,34 @@ exports.postplan = async (req, res) => {
       presentPlan,
     } = req.body;
 
+    // Get userId from the authenticated request
+    const userId = req.userId;
+
+    // If startDate or endDate is missing, try to get them from existing plan
+    let finalStartDate = startDate;
+    let finalEndDate = endDate;
+
+    // If dates are missing, try to get them from existing plan
+    if (!finalStartDate || !finalEndDate) {
+      try {
+        const existingPlan = await Plan.findOne({ userId });
+        if (existingPlan) {
+          finalStartDate = finalStartDate || existingPlan.startDate;
+          finalEndDate = finalEndDate || existingPlan.endDate;
+        }
+      } catch (err) {
+        console.log("Could not fetch existing plan for dates:", err.message);
+      }
+    }
+
+    // If dates are still missing, return error
+    if (!finalStartDate || !finalEndDate) {
+      return res.status(400).json({
+        error: "startDate and endDate are required",
+        details: "Please provide both start and end dates for your study plan"
+      });
+    }
+
     const prompt = `
 You are a study planner AI. Based on the syllabus topics, exam date, available study start and end dates,
 and user time restrictions (avoid breakfast, lunch, dinner, and blocked times),
@@ -26,6 +54,8 @@ The schedule should be broken down:
 4. Each slot should include a "mostAskedQuestions" field with at least 5 relevant questions.
 5. The schedule should be from start date to end date-1.
 6. If there already exists a plan, update it according to the new parameters (session hours, leisure hours, etc.).
+7. Even if some parameters are missing just autofill it with respect to the presentplan! Please give it in the asked format no field should be left missing that i have mentioned!
+8.If a plan is already there compare with the fields that i sent you again,make that as your new data and change with respect to that!Because it is the new data that you have edit.(ONly do if there is a present plan)
 ⚠️ Return ONLY valid JSON (no markdown, no explanations, no code fences).  
 
 Format:
@@ -34,7 +64,7 @@ Format:
     "day": "YYYY-MM-DD",
     "slots": [
       { 
-        "time": "09:00-10:30", 
+        "time": "09:00-10:30", (Not exactly this give with regards to the sessionHrs and leisureTimes)
         "topics": ["Topic 1"],
         "mostAskedQuestions": ["Question 1", "Question 2", "Question 3", "Question 4", "Question 5"]
       },
@@ -49,8 +79,8 @@ Format:
 
 The syllabus is ${JSON.stringify(syllabus)}
 The modelQuestion is ${JSON.stringify(modelq)}
-The startDate is ${startDate}
-The endDate is ${endDate}
+The startDate is ${finalStartDate}
+The endDate is ${finalEndDate}
 The session time is ${sessionHours}
 The Leisure Hours are ${JSON.stringify(leisureTimes || [])}
 The present plan is ${presentPlan ? JSON.stringify(presentPlan) : "none"}
@@ -113,32 +143,29 @@ The present plan is ${presentPlan ? JSON.stringify(presentPlan) : "none"}
       }];
     });
 
-    // Check if we have a presentPlan (update case)
-    if (presentPlan && req.userId) {
-      // Find existing plan
-      const existingPlan = await Plan.findOne({ userId: req.userId });
+    // Check if we have an existing plan to update
+    const existingPlan = await Plan.findOne({ userId });
+    
+    if (existingPlan) {
+      // Update existing plan
+      existingPlan.plan = transformedSchedule;
+      existingPlan.startDate = finalStartDate;
+      existingPlan.endDate = finalEndDate;
+      existingPlan.updatedAt = Date.now();
       
-      if (existingPlan) {
-        // Update existing plan
-        existingPlan.plan = transformedSchedule;
-        existingPlan.startDate = startDate;
-        existingPlan.endDate = endDate;
-        existingPlan.updatedAt = Date.now();
-        
-        await existingPlan.save();
-        
-        return res.json({
-          message: "Plan updated successfully",
-          plan: transformedSchedule,
-        });
-      }
+      await existingPlan.save();
+      console.log(existingPlan.plan);
+      return res.json({
+        message: "Plan updated successfully",
+        plan: transformedSchedule,
+      });
     }
 
     // Create new plan (default behavior)
     const newPlan = new Plan({
-      userId: req.userId,
-      startDate,
-      endDate,
+      userId: userId,
+      startDate: finalStartDate,
+      endDate: finalEndDate,
       plan: transformedSchedule,
     });
 
