@@ -113,10 +113,10 @@ exports.syncProgressWithUpdatedPlan = async (req, res) => {
 // ✅ Initialize progress for a plan
 exports.progressPost= async (req, res) => {
   try {
-    const { planId } = req.body;
+    
     const userId = req.userId;
 
-    const plan = await Plan.findById(planId);
+    const plan = await Plan.findOne({userId});
     if (!plan) return res.status(404).json({ error: "Plan not found" });
 
     // Convert plan into progress format
@@ -135,7 +135,6 @@ exports.progressPost= async (req, res) => {
 
     const newProgress = new Progress({
       userId,
-      planId,
       progress: progressData
     });
 

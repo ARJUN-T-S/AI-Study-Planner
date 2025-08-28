@@ -17,8 +17,7 @@ const ProgressDaySchema = new mongoose.Schema({
 }, { _id: false });
 
 const ProgressSchema = new mongoose.Schema({
-  userId: { type: String, required: true, ref: "User" },
-  planId: { type: mongoose.Schema.Types.ObjectId, ref: "Plan", required: true }, // link to Plan
+  userId: { type: String, required: true, ref: "User" }, // link to Plan
   progress: [ProgressDaySchema],
   updatedAt: { type: Date, default: Date.now }
 });

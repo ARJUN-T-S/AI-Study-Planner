@@ -4,7 +4,7 @@ const planController=require('../Controllers/planController');
 const progressController=require('../Controllers/progressController')
 const planMiddleWare=require('../MiddleWare/planMiddleWare');
 const router=express.Router();
-
+router.get('/getplan',verifyToken,planController.getplan);
 router.post('/updateplans',verifyToken,planMiddleWare.getCurrentPlan,planController.postplan);
 router.post('/postPlans',verifyToken,planController.postplan);
 router.get('/getprogress',verifyToken,progressController.getProgress)

@@ -525,7 +525,7 @@ const updatePlanAndSyncProgress = useCallback(async (startDate, endDate) => {
 
   // Function to navigate to study schedule page
   const handleViewStudySchedule = () => {
-    navigate('/study-schedule');
+    navigate('/studyschedule');
   };
 
   // Function to navigate to study plan creation

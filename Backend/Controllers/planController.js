@@ -2,6 +2,23 @@ require("dotenv").config();
 const fetch = require("node-fetch");
 const Plan = require("../Models/Plan");
 
+exports.getplan = async (req, res) => {
+  try {
+    const userId = req.userId;
+
+    const plan = await Plan.findOne({ userId });
+
+    if (!plan) {
+      return res.status(404).json({ message: "Plan not found" });
+    }
+
+    return res.status(200).json({ plan });
+  } catch (err) {
+    console.error("Error fetching plan:", err.message);
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
 exports.postplan = async (req, res) => {
   try {
     const {
@@ -49,6 +66,7 @@ create a structured study schedule.
 
 The schedule should be broken down:
 1. Day by day
+2.The schedule allocation should be neatly distributed across the start and end-date-1 and also consideration of the presentplan's date if present plan is given should also be taken care of and neatly distributed!
 2. Inside each day, provide multiple time slots (like "09:00-10:30", "11:00-12:30", etc.)
 3. Each slot should have minimum of 2 topics based on the difficulty.
 4. Each slot should include a "mostAskedQuestions" field with at least 5 relevant questions.
@@ -56,6 +74,7 @@ The schedule should be broken down:
 6. If there already exists a plan, update it according to the new parameters (session hours, leisure hours, etc.).
 7. Even if some parameters are missing just autofill it with respect to the presentplan! Please give it in the asked format no field should be left missing that i have mentioned!
 8.If a plan is already there compare with the fields that i sent you again,make that as your new data and change with respect to that!Because it is the new data that you have edit.(ONly do if there is a present plan)
+9.If a new subject is added there will be new startDate and endDate it should integrate well with the existing plan
 ⚠️ Return ONLY valid JSON (no markdown, no explanations, no code fences).  
 
 Format:
