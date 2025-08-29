@@ -248,19 +248,6 @@ const StudySchedule = () => {
             }
           });
           
-          // Then create progress - no payload needed, just the authorization header
-          try {
-            await axios.post('http://localhost:5000/plans/postprogress', 
-              {}, // Empty payload
-              {
-                headers: {
-                  'Authorization': `Bearer ${idToken}`
-                }
-              }
-            );
-          } catch (err) {
-            console.error('Error creating progress:', err);
-          }
         } catch (err) {
           console.error('Error creating plan:', err);
         }

@@ -8,7 +8,7 @@ router.get('/getplan',verifyToken,planController.getplan);
 router.post('/updateplans',verifyToken,planMiddleWare.getCurrentPlan,planController.postplan);
 router.post('/postPlans',verifyToken,planController.postplan);
 router.get('/getprogress',verifyToken,progressController.getProgress)
-router.post('/progresspost',verifyToken,progressController.progressPost);
+router.post('/progresspost',progressController.progressPost);
 router.post('/updateprogress',verifyToken,progressController.syncProgressWithUpdatedPlan);
 router.put('/putprogress',verifyToken,progressController.updateProgress);
 module.exports=router;

@@ -75,6 +75,7 @@ The schedule should be broken down:
 7. Even if some parameters are missing just autofill it with respect to the presentplan! Please give it in the asked format no field should be left missing that i have mentioned!
 8.If a plan is already there compare with the fields that i sent you again,make that as your new data and change with respect to that!Because it is the new data that you have edit.(ONly do if there is a present plan)
 9.If a new subject is added there will be new startDate and endDate it should integrate well with the existing plan
+10.The plan should start and end one da
 ⚠️ Return ONLY valid JSON (no markdown, no explanations, no code fences).  
 
 Format:
@@ -189,7 +190,13 @@ The present plan is ${presentPlan ? JSON.stringify(presentPlan) : "none"}
     });
 
     await newPlan.save();
-
+    await fetch("http://localhost:5000/plans/progresspost", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ userId })
+    });
     res.json({
       message: "Plan saved successfully",
       plan: transformedSchedule,
