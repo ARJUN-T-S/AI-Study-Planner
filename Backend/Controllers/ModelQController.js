@@ -2,6 +2,25 @@ const fetch = require("node-fetch");
 const { extractQuestionsWithML } = require('../Utils/extractQuestionsML');
 const ModelPaper = require("../Models/ModelPaper");  // ✅ Import schema
 
+exports.deleteModelQ = async (req, res) => {
+  try {
+    const { subjectId } = req.params;
+
+    // Check if the document exists
+    const modelQ = await ModelQ.findById(subjectId);
+    if (!modelQ) {
+      return res.status(404).json({ message: "Model Question not found" });
+    }
+
+    // Delete the document
+    await ModelQ.findByIdAndDelete(subjectId);
+
+    res.status(200).json({ message: "Model Question deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting Model Question:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
 exports.uploadPDF = async (req, res) => {
   try {
     const AZURE_DOC_INTELLIGENCE_ENDPOINT = process.env.AZURE_DOC_INTELLIGENCE_ENDPOINT;

@@ -29,6 +29,7 @@ exports.postplan = async (req, res) => {
       sessionHours,
       leisureTimes,
       presentPlan,
+      deletedSub,
     } = req.body;
 
     // Get userId from the authenticated request
@@ -65,7 +66,7 @@ and user time restrictions (avoid breakfast, lunch, dinner, and blocked times),
 create a structured study schedule.
 
 The schedule should be broken down:
-1. Day by day
+1. Day by day.If modelQ are given sync them with the topics in the present plan and prioritize them based on the frequency of them asked in the syllabus and give the most asked questions!
 2.The schedule allocation should be neatly distributed across the start and end-date-1 and also consideration of the presentplan's date if present plan is given should also be taken care of and neatly distributed!
 2. Inside each day, provide multiple time slots (like "09:00-10:30", "11:00-12:30", etc.)
 3. Each slot should have minimum of 2 topics based on the difficulty.
@@ -75,7 +76,8 @@ The schedule should be broken down:
 7. Even if some parameters are missing just autofill it with respect to the presentplan! Please give it in the asked format no field should be left missing that i have mentioned!
 8.If a plan is already there compare with the fields that i sent you again,make that as your new data and change with respect to that!Because it is the new data that you have edit.(ONly do if there is a present plan)
 9.If a new subject is added there will be new startDate and endDate it should integrate well with the existing plan
-10.The plan should start and end one da
+10.If there is a deleted subject it should delete all the plans regarding it and update if it is the only subject send an empty json!
+11.Please be smart and send the schedule You are the no 1 ai agent!
 ⚠️ Return ONLY valid JSON (no markdown, no explanations, no code fences).  
 
 Format:
@@ -104,6 +106,7 @@ The endDate is ${finalEndDate}
 The session time is ${sessionHours}
 The Leisure Hours are ${JSON.stringify(leisureTimes || [])}
 The present plan is ${presentPlan ? JSON.stringify(presentPlan) : "none"}
+The deleted plan is & ${JSON.stringify(deletedSub)}
     `;
 
     // Azure endpoint details from .env

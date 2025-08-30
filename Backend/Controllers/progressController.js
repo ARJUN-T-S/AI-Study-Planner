@@ -6,7 +6,7 @@ const Plan = require("../Models/Plan");
  */
 exports.syncProgressWithUpdatedPlan = async (req, res) => {
   try {
-    const {userId} = req.userId;
+    const userId=req.userId;
     const { date, time } = req.body; // frontend will send date & time of slot(s) to sync
 
     if (!date || !time) {
@@ -21,7 +21,7 @@ exports.syncProgressWithUpdatedPlan = async (req, res) => {
     const planId = plan._id;
 
     // 2️⃣ Get the old progress
-    const progressDoc = await Progress.findOne({ userId, planId });
+    const progressDoc = await Progress.findOne({ userId});
     if (!progressDoc) {
       return res.status(404).json({ error: "Progress not found for this plan" });
     }
